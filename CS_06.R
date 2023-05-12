@@ -314,24 +314,3 @@ models_comp <- rbind(models_comp, "XGBReg" = c(mean(abs_err_xgb),
                                                  range(abs_err_xgb))) 
 
 View(model_comp)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
