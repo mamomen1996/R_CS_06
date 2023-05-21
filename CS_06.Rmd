@@ -1,0 +1,425 @@
+---
+title: "Sports Analytics (Gradient Boost approaches for Decision Tree in Regression problems)"
+author: "Mohammad Ali Momen"
+date: "05/07/2023"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    number_sections: true
+    self_contained: true
+    code_download: true
+    code_folding: show
+    df_print: paged
+  md_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    number_sections: true
+    variant: markdown_github
+  html_notebook: default
+  pdf_document: default
+  word_document: default
+---
+
+```{css, echo=FALSE}
+pre {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+pre[class] {
+  max-height: 200px;
+}
+```
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, attr.source = '.numberLines')
+```
+
+***
+
+# Required Libraries
+```{r}
+library('gbm')
+library('xgboost')
+library('ggplot2')
+```
+
+# Read Data from File
+```{r}
+load('case4_dataset_v2.RData')  # pre-processed Data
+dim(data2)  # 263 records, 19 variables
+```
+
+***
+
+# Business Understanding
+
+* know business process and issues
+* know the context of the problem
+* know the order of numbers in the business
+
+***
+
+# Data Understanding
+## Data Inspection
+Data Understanding from Free Perspective
+
+### Dataset variables definition
+```{r}
+colnames(data2)
+```
+
+> KPI (Key Performance Indicator) variables in 1986
+
+* **Hits**:       Number of hits in 1986
+* **HmRun**:      Number of home runs in 1986
+* **Runs**:       Number of runs in 1986
+* **RBI**:        Number of runs batted in in 1986
+* **Walks**:      Number of walks in 1986
+* **PutOuts**:    Number of put outs in 1986
+* **Assists**:    Number of assists in 1986
+* **Errors**:     Number of errors in 1986
+
+> KPI variables in whole career life
+
+* **Years**:      Number of years in the major leagues
+* **CAtBat**:     Number of times at bat during his career
+* **CHits**:      Number of hits during his career
+* **CHmRun**:     Number of home runs during his career
+* **CRuns**:      Number of runs during his career
+* **CRBI**:       Number of runs batted in during his career
+* **CWalks**:     Number of walks during his career
+
+> Categorical variables
+
+* **League**:     A factor with levels A and N indicating player's league at the end of 1986 (american league|national league)
+* **Division**:   A factor with levels E and W indicating player's division at the end of 1986 (west|east)
+* **NewLeague**:  A factor with levels A and N indicating player's league at the beginning of 1987
+* **Name**:       name of players
+
+> Outcome variable
+
+* **Salary**:     1987 annual salary on opening day in thousands of dollars
+
+
+## Data Exploring
+Data Understanding from Statistical Perspective
+
+### Overview of Dataframe
+```{r}
+class(data2)
+head(data2)
+tail(data2)
+str(data2)
+summary(data2)
+```
+
+***
+
+# Data PreProcessing
+## Divide Dataset into Train and Test randomly
+```{r}
+head(train)
+dim(train)  # 18 predictor variables
+str(train)
+
+head(test)
+dim(test)
+str(test)
+```
+
+***
+
+# Modeling
+```{r}
+models_comp  # models comparison
+```
+
+## Model 11: Gradient Boost Regression
+```{r}
+set.seed(123)
+gbm_1 <- gbm::gbm(formula = Log_Salary ~ . - Salary, 
+		distribution = 'gaussian', 
+		data = train,
+		n.trees = 10000,
+		interaction.depth = 1,
+		shrinkage = 0.001,
+		cv.folds = 5,
+		n.cores = NULL,
+		verbose = F)
+
+gbm_1$cv.error  # get MSE for every iteration
+min(gbm_1$cv.error)
+sqrt(min(gbm_1$cv.error))  # compute RMSE
+```
+
+Plot Loss Function as a result of n Trees added to the Ensemble
+```{r}
+gbm.perf(gbm_1, method = 'cv')
+```
+
+Use different hyper-parameters and create another model
+```{r}
+set.seed(123)
+gbm_2 <- gbm::gbm(formula = Log_Salary ~ . - Salary,
+		distribution = 'gaussian',
+		data = train,
+		n.trees = 10000,
+		interaction.depth = 3,
+		shrinkage = 0.1,
+		cv.folds = 5,
+		n.cores = NULL,
+		verbose = F)
+
+gbm_2$cv.error  # get MSE for every iteration
+min(gbm_2$cv.error)
+sqrt(min(gbm_2$cv.error))  # compute RMSE
+```
+
+Plot Loss Function as a result of n Trees added to the Ensemble
+```{r}
+gbm.perf(gbm_2, method = 'cv')  # Overfitting
+```
+
+Tuning GBM hyper-parameters
+
+Create hyper-parameter grid
+```{r}
+par_grid <- expand.grid(shrinkage = c(0.01, 0.1, 0.3),
+			interaction_depth = c(1, 3, 5),
+			n_minobsinnode = c(5, 10, 15),
+			bag_fraction = c(0.5, 0.7, 0.9)  # Stochastic Gradient: bag.fraction < 1
+			)  # generates all possible permutations of given parameters
+par_grid
+nrow(par_grid)  # 81 different combinations
+```
+
+Grid search with traditional approach (train and validation approach)
+```{r}
+for(i in 1:nrow(par_grid)){
+	set.seed(123)
+	gbm_tune <- gbm(formula = Log_Salary ~ . - Salary,
+			distribution = 'gaussian',
+			data = train,
+			n.trees = 5000,
+			interaction.depth = par_grid$interaction_depth[i],
+			shrinkage = par_grid$shrinkage[i],
+			n.minobsinnode = par_grid$n_minobsinnode[i],
+			bag.fraction = par_grid$bag_fraction[i],
+			train.fraction = 0.8,
+			cv.folds = 0,
+			n.cores = NULL,
+			verbose = F)  # results are base on validation data
+	par_grid$optimal_trees[i] <- which.min(gbm_tune$valid.error)  # which Tree is optimal Tree?
+	par_grid$min_RMSE[i] <- sqrt(min(gbm_tune$valid.error))  # what is optimal Tree's RMSE?
+}  # check 81 different Stochastic Gradient Boost models
+
+head(par_grid)
+par_grid
+par_grid$optimal_trees
+all(par_grid$optimal_trees < 5000)
+par_grid[which.min(par_grid$min_RMSE),]  # the best model (best hyper-parameter combination) which has min(RMSE) on validation data
+```
+
+Final model (use the best hyper-parameter combination for main model creation)
+```{r}
+gbm_3 <- gbm(formula = Log_Salary ~ . - Salary,
+		distribution = 'gaussian',
+		data = train,
+		n.trees = 100,
+		interaction.depth = 5,
+		shrinkage = 0.3, 
+		n.minobsinnode = 15,
+		bag.fraction = 0.5,
+		train.fraction = 1,
+		cv.folds = 0,
+		n.cores = NULL)
+summary(gbm_3)  # relative importance
+```
+
+## Model 12: eXtreme Gradient Boost Regression (XGBoost Regression)
+
+Create model.matrix on Train dataset
+```{r}
+x <- model.matrix(Log_Salary ~ . - Salary, data = train)[,-1]  # remove intercept
+y <- train$Log_Salary
+
+set.seed(123)
+xgb_1 <- xgboost::xgboost(data = x, 
+			label = y, 
+			eta = 0.1,
+			lambda = 0,
+			max_depth = 8,
+			nround = 1000,
+			subsample = 0.65,
+			objective = 'reg:squarederror',
+			verbose = 0)
+
+xgb_1$evaluation_log  # train RMSE
+
+ggplot(xgb_1$evaluation_log) +
+	geom_line(aes(iter, train_rmse), color = 'red')  # plot error vs. number of trees
+```
+
+Tuning hyper-parameters
+
+divide Train dataset to train and validation
+```{r}
+set.seed(1234)
+train_cases <- sample(1:nrow(train), nrow(train) * 0.8)
+train_xgboost <- train[train_cases,]  # train dataset
+dim(train_xgboost)
+
+xtrain <- model.matrix(Log_Salary ~ . - Salary, data = train_xgboost)[,-1]  # remove intercept
+ytrain <- train_xgboost$Log_Salary
+
+validation_xgboost <- train[- train_cases,]  # validation dataset
+dim(validation_xgboost)
+
+xvalidation <- model.matrix(Log_Salary ~ . - Salary, data = validation_xgboost)[, -1]  # remove intercept
+yvalidation <- validation_xgboost$Log_Salary
+```
+
+Create hyper-parameter grid
+```{r}
+par_grid <- expand.grid(eta = c(0.01, 0.05, 0.1, 0.3),
+			lambda = c(0, 1, 2, 5),
+			max_depth = c(1, 3, 5, 7),
+			subsample = c(0.65, 0.8, 1),
+			colsample_bytree = c(0.8, 0.9, 1))
+dim(par_grid)  # 576 different combination
+```
+
+Grid search
+```{r}
+for(i in 1:nrow(par_grid)){
+	set.seed(123)
+	xgb_tune <- xgboost(data = xtrain,
+			label = ytrain,
+			eta = par_grid$eta[i],
+			max_depth = par_grid$max_depth[i],
+			subsample = par_grid$subsample[i],
+			colsample_bytree = par_grid$colsample_bytree[i],
+			nrounds = 1000,
+			objective = 'reg:squarederror',
+			verbose = 0,
+			early_stopping_rounds = 10)
+	pred_xgb_validation <- predict(xgb_tune, xvalidation)
+	rmse <- sqrt(mean((yvalidation - pred_xgb_validation) ^ 2))
+	par_grid$RMSE[i] <- rmse
+}
+
+par_grid
+```
+
+>  We choose which one has min(RMSE)
+
+Final model
+```{r}
+set.seed(123)
+xgb_2 <- xgboost(data = x,
+		label = y,
+		eta = 0.05,
+		max_depth = 3,
+		lambda = 0,
+		nround = 1000,
+		colsample_bytree = 1,
+		subsample = 0.8,
+		objective = 'reg:squarederror',
+		verbose = 0)
+```
+
+
+# Model Evaluation
+## Test the Model 11 performance
+### Prediction
+```{r}
+pred_gbm <- predict(gbm_3, n.trees = 100, newdata = test)  # prediction on test dataset
+pred_gbm  # predictions of Log_Salary
+pred_gbm <- exp(pred_gbm)
+pred_gbm  # predictions of Salary
+```
+
+### Evaluate model performance in Test dataset:
+Actual vs. Prediction
+```{r}
+plot(test$Salary, pred_gbm, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)  # compare with 45' line
+```
+
+Absolute Error mean, median, sd, max, min
+```{r}
+abs_err_gbm <- abs(pred_gbm - test$Salary) #absolute error value (AEV)
+
+hist(abs_err_gbm, breaks = 25)  # residuals distribution
+mean(abs_err_gbm)
+median(abs_err_gbm)
+sd(abs_err_gbm)
+max(abs_err_gbm)
+min(abs_err_gbm)
+```
+
+Boxplot (which observations are outliers?)
+```{r}
+boxplot(abs_err_gbm, main = 'Error distribution')
+
+models_comp <- rbind(models_comp, "GBReg" = c(mean(abs_err_gbm),
+                                                 median(abs_err_gbm),
+                                                 sd(abs_err_gbm),
+                                                 IQR(abs_err_gbm),
+                                                 range(abs_err_gbm))) 
+
+models_comp
+```
+
+## Test the Model 12 performance
+```{r}
+x_test <- model.matrix(Log_Salary ~ . - Salary, data = test)[,-1]  # model.matrix of predictor variables
+```
+
+### Prediction
+```{r}
+pred_xgb <- predict(xgb_2, x_test)  # prediction on test dataset
+pred_xgb  # predictions of Log_Salary
+pred_xgb <- exp(pred_xgb)
+pred_xgb  # predictions of Salary
+```
+
+### Evaluate model performance in Test dataset:
+Actual vs. Prediction
+```{r}
+plot(test$Salary, pred_xgb, xlab = "Actual", ylab = "Prediction")
+abline(a = 0, b = 1, col = "red", lwd = 2)  # compare with 45' line
+```
+
+Absolute Error mean, median, sd, max, min
+```{r}
+abs_err_xgb <- abs(pred_xgb - test$Salary) #absolute error value (AEV)
+
+hist(abs_err_xgb, breaks = 25)  # residuals distribution
+mean(abs_err_xgb)
+median(abs_err_xgb)
+sd(abs_err_xgb)
+max(abs_err_xgb)
+min(abs_err_xgb)
+```
+
+Boxplot (which observations are outliers?)
+```{r}
+boxplot(abs_err_xgb, main = 'Error distribution')
+
+models_comp <- rbind(models_comp, "XGBReg" = c(mean(abs_err_xgb),
+                                                 median(abs_err_xgb),
+                                                 sd(abs_err_xgb),
+                                                 IQR(abs_err_xgb),
+                                                 range(abs_err_xgb))) 
+
+models_comp
+```
+
+***
+
+For more information check the [Github](https://github.com/mamomen1996/R_CS_06) repository.
