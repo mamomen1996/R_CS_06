@@ -14,7 +14,7 @@ library('ggplot2')
 
 
 ### Read Data from File ----
-load('dataset_v2.RData')  # pre-processed Data
+load('case4_dataset_v2.RData')  # pre-processed Data
 dim(data2)  # 263 records, 19 variables
 
 
@@ -278,7 +278,7 @@ models_comp <- rbind(models_comp, "GBReg" = c(mean(abs_err_gbm),
                                                  IQR(abs_err_gbm),
                                                  range(abs_err_gbm))) 
 
-View(model_comp)
+View(models_comp)
 
 # Test the Model 12 performance
 x_test <- model.matrix(Log_Salary ~ . - Salary, data = test)[,-1]  # model.matrix of predictor variables
@@ -313,4 +313,4 @@ models_comp <- rbind(models_comp, "XGBReg" = c(mean(abs_err_xgb),
                                                  IQR(abs_err_xgb),
                                                  range(abs_err_xgb))) 
 
-View(model_comp)
+View(models_comp)
